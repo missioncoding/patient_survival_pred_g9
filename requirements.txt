@@ -5,8 +5,10 @@ requests>=2.23.0,<2.24.0
 
 gradio==3.36.1        # gives a friendly web interface
 
+joblib>=1.4
+
 # If locally copied whl file inside titanic_model_api then use given below
-titanic_model-0.0.1-py3-none-any.whl
+# titanic_model-0.0.1-py3-none-any.whl
 
 # After uploding your package in PyPI use the given below           PyPI - Python Package Index
 #titanic-model==0.0.1

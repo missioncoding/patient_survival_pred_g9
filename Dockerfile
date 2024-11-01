@@ -2,10 +2,10 @@
 FROM python:3.10
 
 # specify working directory
-WORKDIR /titanic_model_api
+WORKDIR /patient_survival_pred_g9
 
-ADD /titanic_model_api/requirements.txt .
-ADD /titanic_model_api/*.whl .
+ADD /patient_survival_pred_g9/requirements.txt .
+#ADD /titanic_model_api/*.whl .
 
 # update pip
 RUN pip install --upgrade pip
@@ -16,7 +16,7 @@ RUN pip install -r requirements.txt
 RUN rm *.whl
 
 # copy application files
-ADD /titanic_model_api/app/* ./app/
+ADD /patient_survival_pred_g9/app/* ./app/
 
 # expose port for application
 EXPOSE 8001
