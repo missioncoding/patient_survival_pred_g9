@@ -1,25 +1,26 @@
-# pull python base image
+# Pull Python base image
 FROM python:3.10
 
-# specify working directory
+# Specify working directory
 WORKDIR /patient_survival_pred_g9
 
-ADD /patient_survival_pred_g9/requirements.txt .
-#ADD /titanic_model_api/*.whl .
+# Add requirements file
+ADD requirements.txt .
 
-# update pip
+# Add model pickle file instead of .whl, /patient_survival_pred_g9/
+ADD xgboost-model.pkl .  
+
+# Update pip
 RUN pip install --upgrade pip
 
-# install dependencies
+# Install dependencies
 RUN pip install -r requirements.txt
 
-RUN rm *.whl
+# Copy application files
+ADD /app/* ./app/
 
-# copy application files
-ADD /patient_survival_pred_g9/app/* ./app/
-
-# expose port for application
+# Expose port for application
 EXPOSE 8001
 
-# start fastapi application
+# Start FastAPI application
 CMD ["python", "app/main.py"]
