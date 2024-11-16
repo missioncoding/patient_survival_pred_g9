@@ -10,6 +10,6 @@ prometheus-client
 
 urllib3
 numpy>=1.21.0,<2.0.0
-gradio==3.36.1
+gradio==3.36.1        # gives a friendly web interface
 
 xgboost
