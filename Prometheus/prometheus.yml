@@ -12,12 +12,12 @@ scrape_configs:
     scrape_interval: 10s # override default value
     scrape_timeout: 10s # override default value
     static_configs:
-      - targets: ["opulent-robot-jjr4grxx5rrj35grp-9090.app.github.dev"] # The target here it's Prometheus itself.
+      - targets: ["localhost:9090"] # The target here it's Prometheus itself.
 
-  - job_name: "m7_mp2_app"
+  - job_name: "predictsurvival"
     metrics_path: '/metrics'
     scheme: 'http'
     scrape_interval: 10s       # override default value
     scrape_timeout: 10s       # override default value
     static_configs:
-      - targets: ["opulent-robot-jjr4grxx5rrj35grp-8001.app.github.dev"]     # The target here it's Prometheus itself.
+      - targets: ["predict:8001"]     # The target here it's Prometheus itself.
