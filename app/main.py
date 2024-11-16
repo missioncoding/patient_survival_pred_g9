@@ -6,12 +6,14 @@ sys.path.append(str(root))
 
 import gradio
 from fastapi import FastAPI, Request, Response
+from sklearn.metrics import accuracy_score, f1_score
 
 import random
 import numpy as np
 import pandas as pd
 import gradio
 import joblib
+import prometheus_client as prom
 # from titanic_model.processing.data_manager import load_dataset, load_pipeline
 # from titanic_model import __version__ as _version
 # from titanic_model.config.core import config
@@ -24,91 +26,114 @@ import joblib
 # FastAPI object
 app = FastAPI()
 
-save_file_name = "xgboost-model.pkl"
-model = joblib.load(save_file_name)
+
+def handle_outliers(df, colm):
+    '''Change the values of outlier to upper and lower whisker values '''
+    q1 = df.describe()[colm].loc["25%"]
+    q3 = df.describe()[colm].loc["75%"]
+    iqr = q3 - q1
+    lower_bound = q1 - (1.5 * iqr)
+    upper_bound = q3 + (1.5 * iqr)
+    for i in range(len(df)):
+        if df.loc[i, colm] > upper_bound:
+            df.loc[i, colm] = upper_bound
+        if df.loc[i, colm] < lower_bound:
+            df.loc[i, colm] = lower_bound
+    return df
 
 
-def predict_death_event(age, anaemia, creatinine_phosphokinase, diabetes, ejection_fraction, 
-                        high_blood_pressure, platelets, serum_creatinine, serum_sodium, 
-                        sex, smoking, time):
-    # Organize the input as a numpy array and reshape it for the model
-    user_input = np.array([age, anaemia, creatinine_phosphokinase, diabetes, ejection_fraction, 
-                           high_blood_pressure, platelets, serum_creatinine, serum_sodium, 
-                           sex, smoking, time]).reshape(1, -1)
-    
-    pred = model.predict(user_input)
-    return "Death Event" if pred[0] == 1 else "No Death Event"
+def load_dataset():
+    file_name = 'heart_failure_clinical_records_dataset.csv'
+    df = pd.read_csv(Path(f"{parent}/{file_name}"))
+    outlier_colms = ['creatinine_phosphokinase', 'ejection_fraction', 'platelets', 'serum_creatinine', 'serum_sodium']
+    df1 = df.copy()
+    for colm in outlier_colms:
+        df1 = handle_outliers(df1, colm)
 
-# Gradio interface to generate UI link
+    return df1
+
+
+data = load_dataset()  # read complete data
+
+acc_metric = prom.Gauge('patient_survival_prediction', 'Accuracy score')
+f1_metric = prom.Gauge('patient_survival_f1score', 'F1 score')
+
+loaded_model = joblib.load(f"{parent}/xgboost-model.pkl")
+
+
+# X = data.iloc[:, :-1].values
+# y = data['DEATH_EVENT'].values
+# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.3, stratify = y, random_state= 123)
+
+# test_data = X_test.copy()
+# test_data['target'] = y_test.copy()
+
+
+# Function for updating metrics
+def update_metrics():
+    test_data = data.sample(100)
+    test_features = test_data.iloc[:, :-1].values
+    test_target = test_data['DEATH_EVENT'].values
+    # Performance on test set
+    y_pred = loaded_model.predict(test_features)  # prediction
+    acc = accuracy_score(test_target, y_pred).round(3)  # accuracy score
+    f1 = f1_score(test_target, y_pred).round(3)  # F1 score
+
+    acc_metric.set(acc)
+    f1_metric.set(f1)
+
+
+@app.get("/metrics")
+async def get_metrics():
+    update_metrics()
+    return Response(media_type="text/plain", content=prom.generate_latest())
+
+
+# UI - Input components
+in_Age = gradio.Slider(20, 90, value="79", label="Age", info="Choose between 20 and 90")
+#gradio.Textbox(lines=1, placeholder=None, value="79", label='Age')
+in_Anaemia = gradio.Radio(['0', '1'], type="value", label='Anaemia')
+in_Cret = gradio.Slider(200,700, value="589", label='CReatinine phosphokinase')
+in_Diabetes = gradio.Radio(['0', '1'], type="value", label='Diabetes')
+#in_Ejection = gradio.Textbox(lines=1, placeholder=None, value="38", label='Ejection fraction')
+in_Ejection = gradio.Slider(20,60, value="38", label='Ejection fraction')
+in_High_BP = gradio.Radio(['0', '1'], type="value", label='High blood pressure')
+#in_Platelets = gradio.Textbox(lines=1, placeholder=None, value="265000", label='Platelets')
+in_Platelets = gradio.Slider(20000,80000, value="265000", label='Platelets')
+in_Sex = gradio.Radio(['0', '1'], type="value", label='Sex')
+#in_Serum_Creat = gradio.Textbox(lines=1, placeholder=None, value="1.1", label='Serum creatinine')
+in_Serum_Creat = gradio.Slider(0.5,2.0, value="1.1", label='Serum creatinine')
+#in_Serum_Sodium = gradio.Textbox(lines=1, placeholder=None, value="135", label='Serum sodium')
+in_Serum_Sodium = gradio.Slider(100,250,value="135", label='Serum sodium')
+in_Smoking = gradio.Radio(['0', '1'], type="value", label='Smoking')
+#in_Time = gradio.Textbox(lines=1, placeholder=None, value="4", label='Follow-up period')
+in_Time = gradio.Slider(2,6, value="4", label='Follow-up period')
+
+
+# Output response
+# YOUR CODE HERE
+out_Death_Event = gradio.Textbox(lines=1, placeholder=None, label='Death event')
+
+# Label prediction function
+def predict_death_event(age,anaemia, cret, diabetes, ejection, bp, platelets, sex, serum_creat, serum_sodium, smoking, time):
+    '''Function to predict survival of patients with heart failure'''
+    input_data = np.array([[age, anaemia, bp, cret, diabetes, ejection, platelets, sex, serum_creat, serum_sodium, smoking, time]],dtype=object)
+    prediction = loaded_model.predict(input_data)[0]
+    #print(result)
+    label = "Deceased" if prediction == 1 else "Survived"
+    #print(label)
+    return label
+
+# Create Gradio interface object
 title = "Patient Survival Prediction"
 description = "Predict survival of patient with heart failure, given their clinical record"
 
 iface = gradio.Interface(fn = predict_death_event,
-                         inputs = [
-        gradio.Slider(0, 100, step=1, label="Age"),  # Numerical
-        gradio.Radio([0, 1], label="Anaemia"),   # Categorical (0 = No, 1 = Yes)
-        gradio.Slider(23, 7861, step=1, label="Creatinine Phosphokinase"),  # Numerical
-        gradio.Radio([0, 1], label="Diabetes"),  # Categorical (0 = No, 1 = Yes)
-        gradio.Slider(10, 80, step=1, label="Ejection Fraction"),           # Numerical
-        gradio.Radio([0, 1], label="High Blood Pressure"),              # Categorical
-        gradio.Slider(25000, 850000, step=1000, label="Platelets"),         # Numerical
-        gradio.Slider(0.5, 10.0, step=0.1, label="Serum Creatinine"),       # Numerical
-        gradio.Slider(110, 150, step=1, label="Serum Sodium"),              # Numerical
-        gradio.Radio([0, 1], label="Sex"),                              # Categorical (0 = Female, 1 = Male)
-        gradio.Radio([0, 1], label="Smoking"),                          # Categorical (0 = No, 1 = Yes)
-        gradio.Slider(1, 300, step=1, label="Time")                      # Numerical
-    ],
-                         outputs = "text",
+                         inputs = [in_Age,in_Anaemia, in_Cret, in_Diabetes, in_Ejection, in_High_BP, in_Platelets, in_Sex, in_Serum_Creat, in_Serum_Sodium, in_Smoking, in_Time],
+                         outputs = [out_Death_Event],
                          title = title,
                          description = description,
                          allow_flagging='never')
-
-
-
-# # UI - Input components
-# in_Pid = gradio.Textbox(lines=1, placeholder=None, value="79", label='Passenger Id')
-# in_Pclass = gradio.Radio(['1', '2', '3'], type="value", label='Passenger class')
-# in_Pname = gradio.Textbox(lines=1, placeholder=None, value="Caldwell, Master. Alden Gates", label='Passenger Name')
-# in_sex = gradio.Radio(["Male", "Female"], type="value", label='Gender')
-# in_age = gradio.Textbox(lines=1, placeholder=None, value="14", label='Age of the passenger in yrs')
-# in_sibsp = gradio.Textbox(lines=1, placeholder=None, value="0", label='No. of siblings/spouse of the passenger aboard')
-# in_parch = gradio.Textbox(lines=1, placeholder=None, value="2", label='No. of parents/children of the passenger aboard')
-# in_ticket = gradio.Textbox(lines=1, placeholder=None, value="248738", label='Ticket number')
-# in_cabin = gradio.Textbox(lines=1, placeholder=None, value="A5", label='Cabin number')
-# in_embarked = gradio.Radio(["Southampton", "Cherbourg", "Queenstown"], type="value", label='Port of Embarkation')
-# in_fare = gradio.Textbox(lines=1, placeholder=None, value="29", label='Passenger fare')
-
-# # UI - Output component
-# out_label = gradio.Textbox(type="text", label='Prediction', elem_id="out_textbox")
-
-# # Label prediction function
-# def get_output_label(in_Pid, in_Pclass, in_Pname, in_sex, in_age, in_sibsp, in_parch, in_ticket, in_cabin, in_embarked, in_fare):
-    
-#     input_df = pd.DataFrame({"PassengerId": [in_Pid], 
-#                              "Pclass": [int(in_Pclass)], 
-#                              "Name": [in_Pname],
-#                              "Sex": [in_sex.lower()], 
-#                              "Age": [float(in_age)], 
-#                              "SibSp": [int(in_sibsp)],
-#                              "Parch": [int(in_parch)], 
-#                              "Ticket": [in_ticket], 
-#                              "Cabin": [in_cabin],
-#                              "Embarked": [in_embarked[0]], 
-#                              "Fare": [float(in_fare)]})
-    
-#     result = make_prediction(input_data=input_df.replace({np.nan: None}))["predictions"]
-#     label = "Survive" if result[0]==1 else "Not Survive"
-#     return label
-
-
-# # Create Gradio interface object
-# iface = gradio.Interface(fn = get_output_label,
-#                          inputs = [in_Pid, in_Pclass, in_Pname, in_sex, in_age, in_sibsp, in_parch, in_ticket, in_cabin, in_embarked, in_fare],
-#                          outputs = [out_label],
-#                          title="Titanic Survival Prediction API  ⛴",
-#                          description="Predictive model that answers the question: “What sort of people were more likely to survive?”",
-#                          allow_flagging='never'
-#                          )
 
 # Mount gradio interface object on FastAPI app at endpoint = '/'
 app = gradio.mount_gradio_app(app, iface, path="/")
@@ -116,4 +141,4 @@ app = gradio.mount_gradio_app(app, iface, path="/")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001) 
+    uvicorn.run(app, host="0.0.0.0", port=8001)
