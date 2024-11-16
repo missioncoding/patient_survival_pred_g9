@@ -58,7 +58,7 @@ data = load_dataset()  # read complete data
 acc_metric = prom.Gauge('patient_survival_prediction', 'Accuracy score')
 f1_metric = prom.Gauge('patient_survival_f1score', 'F1 score')
 
-loaded_model = joblib.load(f"{parent}/xgboost-model.pkl")
+loaded_model = joblib.load("xgboost-model.pkl")
 
 
 # X = data.iloc[:, :-1].values
